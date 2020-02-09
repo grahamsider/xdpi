@@ -1,0 +1,337 @@
+#!/bin/sh
+
+set -eCu
+
+# OPTS="hlcn:d:s:"
+OPTS=":hcln:d:s:"
+
+ARG_LIST=0
+ARG_CURR=0
+ARG_NEW=0
+ARG_DEL=0
+ARG_SWITCH=0
+
+# Set this to hardcode a cpp preprocessor path for xrdb merge
+# (ie xrdb -merge -cpp $XRDB_CPP ...)
+XRDB_CPP=${XRDB_CPP:-""}
+
+PROC_LIST="i3 bspwm sway polybar"
+
+DIFF_IN_PATH="/tmp/input.xdpi"
+DIFF_OUT_PATH="/tmp/output.xdpi"
+
+XDPI_DIR="$XDG_CONFIG_HOME/xdpi"
+XDPI_CONF_DIR="$XDPI_DIR/configs"
+
+XRES_PATH="$HOME/.Xresources"
+XRES_INCL="#include \"$XDPI_DIR/x.dpi\""
+
+CONF_CURR_NAME=""
+CONF_CURR_PATH="$XDPI_DIR/x.dpi"
+
+CONF_SWITCH_NAME=""
+CONF_SWITCH_DIR=""
+
+CONF_NEW_NAME=""
+CONF_NEW_DIR=""
+
+CONF_DEL_NAME=""
+CONF_DEL_DIR=""
+
+# CONF_NEW_FONT=""
+# CONF_NEW_FONT_SIZE=""
+# CONF_NEW_DPI=""
+# CONF_NEW_EXTRA=""
+
+# Ensure tmp file cleanup on CTRL-C
+trap cleanup_tmp INT
+
+cleanup_tmp() {
+    rm -f /tmp/*.xdpi
+}
+
+usage() {
+    echo "Usage: ./xdpi [options]"
+    echo "       -l (list):       list configs"
+    echo "       -c (current):    display current config"
+    echo "       -n (new):        create a new config"
+    echo "       -d (delete):     delete specified config"
+    echo "       -s (switch):     switch to specified config"
+    # echo "       -d (dpi)         specify config dpi"
+    # echo "       -f (font/size)   specify font and font size"
+    # echo "       -e (extra)       specify extra details (antialiasing, autohint, etc)"
+    echo "       -h (help):       show usage"
+}
+
+parse_args() {
+    # Parse loop
+    while getopts "$OPTS" opt; do
+        case "$opt" in
+            l )
+                ARG_LIST=1
+                ;;
+            c )
+                ARG_CURR=1
+                ;;
+            s )
+                ARG_SWITCH=1
+                CONF_SWITCH_NAME="$OPTARG"
+                ;;
+            n )
+                ARG_NEW=1
+                CONF_NEW_NAME="$OPTARG"
+                ;;
+            d )
+                ARG_DEL=1
+                CONF_DEL_NAME="$OPTARG"
+                ;;
+            \?|h )
+                usage
+                exit 0
+                ;;
+            : )
+                case "$OPTARG" in
+                    s )
+                        echo "error: no configuration specified for option '-s'"
+                        exit 1
+                        ;;
+                    n )
+                        echo "error: no configuration specified for option '-n'"
+                        exit 1
+                        ;;
+                    d )
+                        echo "error: no configuration specified for option '-d'"
+                        exit 1
+                        ;;
+                esac
+                ;;
+         esac
+    done
+    [ "$OPTIND" -eq "1" ] && usage && exit 0
+    shift $((OPTIND - 1));
+}
+
+exec_args() {
+    if   [ "$ARG_CURR" -eq 1 ]; then
+        get_curr_conf
+        echo "$CONF_CURR_NAME"
+    elif [ "$ARG_LIST" -eq 1 ]; then
+        list_confs
+    elif [ "$ARG_NEW"  -eq 1 ]; then
+        check_new_conf
+        create_conf
+    elif [ "$ARG_DEL"  -eq 1 ]; then
+        check_del_conf
+        delete_conf
+    elif [ "$ARG_SWITCH" -eq 1 ]; then
+        check_switch_conf
+        copy_conf
+        rel_xres
+        exec_script
+        loop_diffs
+        loop_procs
+    fi
+}
+
+get_curr_conf() {
+    CONF_CURR_NAME=$(grep "! Current config: .*$" "$CONF_CURR_PATH" | sed "s/^.*: //") > /dev/null
+}
+
+list_confs() {
+    if ! [ "$(find "$XDPI_CONF_DIR"/* -maxdepth 0 -type d)" ]; then
+        echo "no configs made!"
+    else
+        find "$XDPI_CONF_DIR"/* -maxdepth 0 -type d | sed "s/^.*\///; s/.dpi//"
+    fi
+}
+
+create_conf() {
+    mkdir -p "$CONF_NEW_DIR/diffs"
+    echo             > "$CONF_NEW_DIR/$CONF_NEW_NAME.dpi"
+    echo "#!/bin/sh" > "$CONF_NEW_DIR/$CONF_NEW_NAME.sh"
+    chmod +x "$CONF_NEW_DIR/$CONF_NEW_NAME.sh"
+}
+
+delete_conf() {
+    echo "warning: this will delete everything in $CONF_DEL_DIR"
+    while true; do
+        printf "are you sure you want to delete this configuration? [y/n] "
+        read -r del_confirm
+        case "$del_confirm" in
+            y)
+                break
+                ;;
+            n)
+                exit 0
+                ;;
+            *)
+                echo "error: please enter y or n"
+                ;;
+        esac
+    done
+}
+
+check_new_conf() {
+    CONF_NEW_DIR="$XDPI_CONF_DIR/$CONF_NEW_NAME"
+    if [ -d "$CONF_NEW_DIR" ]; then 
+        echo "error: configuration '$CONF_NEW_DIR' already exists" 
+        exit 1
+    fi
+}
+
+check_del_conf() {
+    CONF_DEL_DIR="$XDPI_CONF_DIR/$CONF_DEL_NAME"
+    if ! [ -d "$CONF_DEL_DIR" ]; then
+        echo "error: configuration '$CONF_DEL_DIR' does not exist" 
+        exit 1
+    fi
+}
+
+check_switch_conf() {
+    CONF_SWITCH_DIR="$XDPI_CONF_DIR/$CONF_SWITCH_NAME"
+    if ! [ -d "$CONF_SWITCH_DIR" ]; then
+        echo "error: configuration '$CONF_SWITCH_DIR' does not exist" 
+        exit 1
+    fi
+}
+
+copy_conf() {
+    rm -f "$CONF_CURR_PATH"
+    echo "! Current config: $CONF_SWITCH_NAME"    > "$CONF_CURR_PATH"
+    echo                                         >> "$CONF_CURR_PATH"
+    cat "$CONF_SWITCH_DIR/$CONF_SWITCH_NAME.dpi" >> "$CONF_CURR_PATH"
+}
+
+exec_script() {
+    # Run user config script, don't exit on error
+    if [ -f "$CONF_SWITCH_DIR/$CONF_SWITCH_NAME.sh" ]; then
+        "$CONF_SWITCH_DIR/$CONF_SWITCH_NAME.sh" || \
+            echo "warning: user script '$CONF_SWITCH_NAME.sh' exits with error code $?"
+    fi
+}
+
+loop_procs() {
+    # If PID exists, reload
+    for proc in $PROC_LIST; do
+        rel_if_alive "$proc"
+    done
+}
+
+loop_diffs() {
+    # Edit specified configs
+    for diff in "$CONF_SWITCH_DIR"/diffs/*.diff; do
+        edit_conf "$diff"
+    done
+}
+
+edit_conf() {
+    # Get config path to edit
+    conf_path=$(grep "#" "$*" | sed "s/#\s*//")
+
+    # Check config path
+    if   [ -z "$conf_path" ]; then
+        echo "error: no path specified in '$(echo "$*" | sed "s/^.*\///")'"
+        echo "skipping..."
+        return 1
+    fi
+    if ! [ -f "$conf_path" ]; then
+        echo "error: path '$conf_path' does not exist"
+        echo "skipping..."
+        return 1
+    fi
+
+    # Generate config backup
+    cp "$conf_path" "$conf_path.xdpi.bak"
+
+    # Store < input, > output in /tmp
+    grep "<" "$*" | sed "s/<\s*//" > $DIFF_IN_PATH
+    grep ">" "$*" | sed "s/>\s*//" > $DIFF_OUT_PATH
+
+    build_sedcmd
+
+    # Edit config
+    sed -i "$sedcmd" "$conf_path"
+
+    cleanup_tmp
+}
+
+build_sedcmd() {
+    # Clean any previous sedcmd
+    sedcmd=""
+
+    # Build sedcmd
+    while read -r input; do
+
+        # Check for matching pair
+        if ! grep -q "$input" "$DIFF_OUT_PATH"; then 
+            echo "warning: '$input' has no matching expression" && continue
+        fi
+
+        # Store output and append sedcmd
+        output=$(grep "$input" "$DIFF_OUT_PATH")
+        sedcmd="$sedcmd s/$input/$output/g ;"
+
+    done < $DIFF_IN_PATH
+
+    # Remove last semi-colon
+    sedcmd=$(echo "$sedcmd" | sed "s/;$//")
+}
+
+check_xres() {
+    # Create .Xresources if not already there
+    if ! [ -f "$XRES_PATH" ]; then
+        touch "$XRES_PATH"
+    fi
+
+    # Add x.dpi include path to xres if not already there
+    if ! grep -q "$XRES_INCL" "$XRES_PATH"; then
+        echo "$XRES_INCL" | cat - "$XRES_PATH" > /tmp/xres.xdpi
+        mv /tmp/xres.xdpi "$XRES_PATH"
+    fi
+}
+
+# XRDB reload
+rel_xres() {
+    if [ -z "$XRDB_CPP" ]; then
+        xrdb -merge "$XRES_PATH" > /dev/null
+    else
+        xrdb -merge -cpp "${XRDB_CPP:-"default"}" "$XRES_PATH" > /dev/null
+    fi
+}
+
+# Process reloads
+rel_i3() {
+    i3-msg restart > /dev/null
+}
+
+rel_sway() {
+    swaymsg reload > /dev/null
+}
+
+rel_bspwm() {
+    bspc wm -r > /dev/null
+}
+
+rel_polybar() {
+    pkill -USR1 -x polybar > /dev/null
+}
+
+rel_if_alive() {
+    if pgrep "$*" > /dev/null; then
+        rel_"$*"
+    fi
+}
+
+main() {
+    parse_args "$@"
+    check_xres
+    exec_args
+
+    # Ensure all tmp files are
+    # deleted before finishing
+    cleanup_tmp
+
+    exit 0
+}
+
+main "$@"
