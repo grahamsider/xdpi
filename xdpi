@@ -2,14 +2,16 @@
 
 set -eCu
 
-# OPTS="hlcn:d:s:"
-OPTS=":hcln:d:s:"
+VERSION="0.1.0"
+
+OPTS=":hclvn:d:s:"
 
 ARG_LIST=0
 ARG_CURR=0
 ARG_NEW=0
 ARG_DEL=0
 ARG_SWITCH=0
+ARG_VER=0
 
 # Set this to hardcode a cpp preprocessor path for xrdb merge
 # (ie xrdb -merge -cpp $XRDB_CPP ...)
@@ -51,55 +53,59 @@ cleanup_tmp() {
 }
 
 usage() {
-    echo "Usage: ./xdpi [options]"
-    echo "       -l (list):       list configs"
-    echo "       -c (current):    display current config"
-    echo "       -n (new):        create a new config"
-    echo "       -d (delete):     delete specified config"
-    echo "       -s (switch):     switch to specified config"
+    echo "Usage: ./xdpi [options]
+      -l (list):       list configs
+      -c (current):    display current config
+      -n (new):        create a new config
+      -d (delete):     delete specified config
+      -s (switch):     switch to specified config
+      -v (version):    show xdpi version and exit
+      -h (help):       show usage"
     # echo "       -d (dpi)         specify config dpi"
     # echo "       -f (font/size)   specify font and font size"
     # echo "       -e (extra)       specify extra details (antialiasing, autohint, etc)"
-    echo "       -h (help):       show usage"
 }
 
 parse_args() {
     # Parse loop
     while getopts "$OPTS" opt; do
         case "$opt" in
-            l )
+            l)
                 ARG_LIST=1
                 ;;
-            c )
+            c)
                 ARG_CURR=1
                 ;;
-            s )
+            s)
                 ARG_SWITCH=1
                 CONF_SWITCH_NAME="$OPTARG"
                 ;;
-            n )
+            n)
                 ARG_NEW=1
                 CONF_NEW_NAME="$OPTARG"
                 ;;
-            d )
+            d)
                 ARG_DEL=1
                 CONF_DEL_NAME="$OPTARG"
                 ;;
-            \?|h )
+            v)
+                ARG_VER=1
+                ;;
+            \?|h)
                 usage
                 exit 0
                 ;;
-            : )
+            :)
                 case "$OPTARG" in
-                    s )
+                    s)
                         echo "error: no configuration specified for option '-s'"
                         exit 1
                         ;;
-                    n )
+                    n)
                         echo "error: no configuration specified for option '-n'"
                         exit 1
                         ;;
-                    d )
+                    d)
                         echo "error: no configuration specified for option '-d'"
                         exit 1
                         ;;
@@ -112,7 +118,9 @@ parse_args() {
 }
 
 exec_args() {
-    if   [ "$ARG_CURR" -eq 1 ]; then
+    if   [ "$ARG_VER"  -eq 1 ]; then
+        echo "xdpi $VERSION"
+    elif [ "$ARG_CURR" -eq 1 ]; then
         get_curr_conf
         echo "$CONF_CURR_NAME"
     elif [ "$ARG_LIST" -eq 1 ]; then
