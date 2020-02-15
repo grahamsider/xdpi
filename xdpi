@@ -40,11 +40,6 @@ CONF_NEW_DIR=""
 CONF_DEL_NAME=""
 CONF_DEL_DIR=""
 
-# CONF_NEW_FONT=""
-# CONF_NEW_FONT_SIZE=""
-# CONF_NEW_DPI=""
-# CONF_NEW_EXTRA=""
-
 # Ensure tmp file cleanup
 trap int_handler  INT
 trap exit_handler EXIT
@@ -74,9 +69,6 @@ usage() {
       -s (switch):     switch to specified config
       -v (version):    show xdpi version and exit
       -h (help):       show usage"
-    # echo "       -d (dpi)         specify config dpi"
-    # echo "       -f (font/size)   specify font and font size"
-    # echo "       -e (extra)       specify extra details (antialiasing, autohint, etc)"
 }
 
 parse_args() {
@@ -348,10 +340,7 @@ main() {
     check_xres
     exec_args
 
-    # Ensure all tmp files are
-    # deleted before finishing
     cleanup
-
     exit 0
 }
 
