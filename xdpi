@@ -2,7 +2,7 @@
 
 set -eCu
 
-VERSION="0.1.0"
+VERSION="0.1.1"
 
 OPTS=":hclvn:d:s:"
 
@@ -45,11 +45,24 @@ CONF_DEL_DIR=""
 # CONF_NEW_DPI=""
 # CONF_NEW_EXTRA=""
 
-# Ensure tmp file cleanup on CTRL-C
-trap cleanup_tmp INT
+# Ensure tmp file cleanup
+trap int_handler  INT
+trap exit_handler EXIT
 
-cleanup_tmp() {
-    rm -f /tmp/*.xdpi
+int_handler() {
+    cleanup
+    exit 1
+}
+
+exit_handler() {
+    EXIT_STATUS="$?"
+    cleanup
+    exit $EXIT_STATUS
+}
+
+cleanup() {
+    [ -f "$DIFF_IN_PATH" ]  && rm -f "$DIFF_IN_PATH"
+    [ -f "$DIFF_OUT_PATH" ] && rm -f "$DIFF_OUT_PATH"
 }
 
 usage() {
@@ -260,7 +273,7 @@ edit_conf() {
     # Edit config
     sed -i "$sedcmd" "$conf_path"
 
-    cleanup_tmp
+    cleanup
 }
 
 build_sedcmd() {
@@ -337,7 +350,7 @@ main() {
 
     # Ensure all tmp files are
     # deleted before finishing
-    cleanup_tmp
+    cleanup
 
     exit 0
 }
