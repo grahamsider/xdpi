@@ -6,6 +6,9 @@ VERSION="0.1.1"
 
 OPTS=":hclvn:d:s:"
 
+# TODO: Change 'ls' to 'find'
+export DISPLAY=":$(ls /tmp/.X11-unix/* | sed "s#/tmp/.X11-unix/X##")"
+
 ARG_LIST=0
 ARG_CURR=0
 ARG_NEW=0
@@ -56,8 +59,12 @@ exit_handler() {
 }
 
 cleanup() {
-    [ -f "$DIFF_IN_PATH" ]  && rm -f "$DIFF_IN_PATH"
-    [ -f "$DIFF_OUT_PATH" ] && rm -f "$DIFF_OUT_PATH"
+    if [ -f   "$DIFF_IN_PATH" ]; then
+        rm -f "$DIFF_IN_PATH"
+    fi
+    if [ -f   "$DIFF_OUT_PATH" ]; then
+        rm -f "$DIFF_OUT_PATH"
+    fi
 }
 
 usage() {
@@ -139,8 +146,8 @@ exec_args() {
     elif [ "$ARG_SWITCH" -eq 1 ]; then
         check_switch_conf
         copy_conf
-        rel_xres
         exec_script
+        rel_xres
         loop_diffs
         loop_procs
     fi
@@ -217,10 +224,14 @@ copy_conf() {
 
 exec_script() {
     # Run user config script, don't exit on error
+    echo "info: executing script..."
     if [ -f "$CONF_SWITCH_DIR/$CONF_SWITCH_NAME.sh" ]; then
+        set +e
         "$CONF_SWITCH_DIR/$CONF_SWITCH_NAME.sh" || \
             echo "warning: user script '$CONF_SWITCH_NAME.sh' exits with error code $?"
+        set -e
     fi
+    echo "info: script execution completed"
 }
 
 loop_procs() {
