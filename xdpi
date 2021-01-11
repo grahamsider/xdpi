@@ -2,7 +2,7 @@
 
 set -eCu
 
-VERSION="0.1.1"
+VERSION="0.2.0"
 
 OPTS=":hclvn:d:s:"
 
@@ -26,6 +26,7 @@ DIFF_OUT_PATH="/tmp/output.xdpi"
 
 XDPI_DIR="$XDG_CONFIG_HOME/xdpi"
 XDPI_CONF_DIR="$XDPI_DIR/configs"
+XDPI_DIFF_DIR="$XDPI_DIR/diffs"
 
 XRES_PATH="$HOME/.Xresources"
 XRES_INCL="#include \"$XDPI_DIR/x.dpi\""
@@ -165,13 +166,17 @@ list_confs() {
 }
 
 create_conf() {
-    mkdir -p "$CONF_NEW_DIR/diffs"
+    mkdir -p "$CONF_NEW_DIR"
     echo             > "$CONF_NEW_DIR/$CONF_NEW_NAME.dpi"
     echo "#!/bin/sh" > "$CONF_NEW_DIR/$CONF_NEW_NAME.sh"
     chmod +x "$CONF_NEW_DIR/$CONF_NEW_NAME.sh"
+    if ! [ -d "$XDPI_DIFF_DIR" ]; then
+        mkdir "$XDPI_DIFF_DIR"
+    fi
 }
 
 delete_conf() {
+    # TODO: Make this actually do something
     echo "warning: this will delete everything in $CONF_DEL_DIR"
     while true; do
         printf "are you sure you want to delete this configuration? [y/n] "
@@ -242,7 +247,7 @@ loop_procs() {
 
 loop_diffs() {
     # Edit specified configs
-    for diff in "$CONF_SWITCH_DIR"/diffs/*.diff; do
+    for diff in "$XDPI_DIFF_DIR"/*.diff; do
         edit_conf "$diff"
     done
 }
@@ -267,9 +272,12 @@ edit_conf() {
     # Generate config backup
     cp "$conf_path" "$conf_path.xdpi.bak"
 
-    # Store < input, > output in /tmp
+    # Store < input in /tmp
     grep "<" "$*" | sed "s/<\s*//" > $DIFF_IN_PATH
-    grep ">" "$*" | sed "s/>\s*//" > $DIFF_OUT_PATH
+
+    # Store > output in /tmp (both global and config specific)
+    sed -n "/---\s*\^\s*\*/,/---\s*\$\s*\*/p" "$*" | grep ">" | sed "s/>\s*//" > $DIFF_OUT_PATH
+    sed -n "/---\s*\^\s*$CONF_SWITCH_NAME/,/---\s*\$\s*$CONF_SWITCH_NAME/p" "$*" | grep ">" | sed "s/>\s*//" >> $DIFF_OUT_PATH
 
     build_sedcmd
 
