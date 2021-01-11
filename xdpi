@@ -6,8 +6,7 @@ VERSION="0.1.1"
 
 OPTS=":hclvn:d:s:"
 
-# TODO: Change 'ls' to 'find'
-export DISPLAY=":$(ls /tmp/.X11-unix/* | sed "s#/tmp/.X11-unix/X##")"
+export DISPLAY=":$(find /tmp/.X11-unix/* -type s | sed "s#/tmp/.X11-unix/X##")"
 
 ARG_LIST=0
 ARG_CURR=0
@@ -254,6 +253,7 @@ edit_conf() {
 
     # Check config path
     if   [ -z "$conf_path" ]; then
+        # FIXME: When no diffs in diff folder, this gets echoed for some reason
         echo "error: no path specified in '$(echo "$*" | sed "s/^.*\///")'"
         echo "skipping..."
         return 1
