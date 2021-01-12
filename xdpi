@@ -2,7 +2,7 @@
 
 set -eCu
 
-VERSION="0.2.0"
+VERSION="0.2.1"
 
 OPTS=":hclvn:d:s:"
 
@@ -134,7 +134,6 @@ exec_args() {
         echo "xdpi $VERSION"
     elif [ "$ARG_CURR" -eq 1 ]; then
         get_curr_conf
-        echo "$CONF_CURR_NAME"
     elif [ "$ARG_LIST" -eq 1 ]; then
         list_confs
     elif [ "$ARG_NEW"  -eq 1 ]; then
@@ -154,11 +153,16 @@ exec_args() {
 }
 
 get_curr_conf() {
-    CONF_CURR_NAME=$(grep "! Current config: .*$" "$CONF_CURR_PATH" | sed "s/^.*: //") > /dev/null
+    if ! [ -f "$CONF_CURR_PATH" ]; then
+        echo "error: no xdpi config in use!"
+    else
+        CONF_CURR_NAME=$(grep "! Current config: .*$" "$CONF_CURR_PATH" | sed "s/^.*: //") > /dev/null
+        echo "$CONF_CURR_NAME"
+    fi
 }
 
 list_confs() {
-    if ! [ "$(find "$XDPI_CONF_DIR"/* -maxdepth 0 -type d)" ]; then
+    if ! [ "$(find "$XDPI_CONF_DIR"/* -maxdepth 0 -type d 2> /dev/null)" ]; then
         echo "no configs made!"
     else
         find "$XDPI_CONF_DIR"/* -maxdepth 0 -type d | sed "s/^.*\///; s/.dpi//"
@@ -228,7 +232,7 @@ copy_conf() {
 
 exec_script() {
     # Run user config script, don't exit on error
-    echo "info: executing script..."
+    echo "info: executing $CONF_SWITCH_NAME.sh"
     if [ -f "$CONF_SWITCH_DIR/$CONF_SWITCH_NAME.sh" ]; then
         set +e
         "$CONF_SWITCH_DIR/$CONF_SWITCH_NAME.sh" || \
@@ -240,6 +244,7 @@ exec_script() {
 
 loop_procs() {
     # If PID exists, reload
+    echo "info: reloading procs"
     for proc in $PROC_LIST; do
         rel_if_alive "$proc"
     done
@@ -248,11 +253,17 @@ loop_procs() {
 loop_diffs() {
     # Edit specified configs
     for diff in "$XDPI_DIFF_DIR"/*.diff; do
+        # Detect nullglob
+        if [ "$diff" = "$XDPI_DIFF_DIR"'/*.diff' -a ! -e "$XDPI_DIFF_DIR"'/*.diff' ]; then
+            echo "info: no diffs detected"
+            continue
+        fi
         edit_conf "$diff"
     done
 }
 
 edit_conf() {
+    echo "info: applying $(echo "$diff" | sed 's/^.*\///')"
     # Get config path to edit
     conf_path=$(grep "#" "$*" | sed "s/#\s*//")
 
