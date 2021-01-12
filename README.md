@@ -10,32 +10,47 @@ To alleviate these issues, I present `xdpi`. `xdpi` is a tool to create, save, a
 
 Upon execution of `xdpi -s [configuration]`, updates are made and applications reloaded. To provide even more flexibility, the user also has the option of creating a shell script for each `xdpi` configuration that will run <i>prior</i> to these updates taking place. The reason for this ordering and an example of its efficacity is described below. Allowing the execution of this user-created script allows for near-limitless flexibility. Common use cases I've found to leverage this are to use this script to execute the appropriate `xrandr` command to enable new display(s)/disable others, setting the background of the new display(s) with your favorite wallpaper utility (e.g. `feh`), and even setting the PulseAudio profile/sink if for example your monitor has built-in speakers. An example of this may be found near the bottom of the README.
 
-## Configuration Tree
+## Xdpi Configuration & Directory Structure
 
-Every `xdpi` configuration is located in `$XDG_CONFIG_HOME/xdpi/configs` and assumes the following format:
+Every known `xdpi` configuration will have a self-titled directory located in `$XDG_CONFIG_HOME/xdpi/configs` assuming the following format:
+
+```
+└── configs
+    ├── my_config_0
+    │   ├── my_config_0.dpi
+    │   └── my_config_0.sh
+    │
+    ├── my_config_1
+    │   ├── my_config_1.dpi
+    │   └── my_config_1.sh
+    │
+    ┋
+    │
+    └── my_config_n
+        ├── my_config_n.dpi
+        └── my_config_n.sh
+```
+
+On the other hand, all application diffs are to be placed in `$XDG_CONFIG_HOME/xdpi/diffs` as follows:
 
 ```
 └── diffs
-    ├── application-1.diff
-    ├── application-2.diff
+    ├── application_1.diff
+    ├── application_2.diff
     ┋
-    └── application-n.diff
-└── configs
-    └── my-config
-        ├── my-config.dpi
-        └── my-config.sh
+    └── application_m.diff
 ```
 
-When creating a new configuration via `xdpi -n [configuration]`, a "blank-slate" directory is created under the configuration name specified. Following the example above, executing `xdpi -n my-config` would create an empty `my-config` directory, under which would be the files `my-config.dpi` and `my-config.sh`.
+When creating a new configuration via `xdpi -n [configuration]`, a "blank-slate" directory is created using the specified configuration name. Following the example above, executing `xdpi -n my_config_0` would create an empty `my_config_0` directory, under which one would find the files `my_config_0.dpi` and `my_config_0.sh`.
 
 ## Order of Execution
 
 When switching configurations, the order of execution is as follows: 
 
-- Ensure `$HOME/.Xresources` includes `$XDG_CONFIG_HOME/xdpi/x.dpi`
+- Ensure `$HOME/.Xresources` includes `$XDG_CONFIG_HOME/xdpi/x.dpi` (handled automatically by `xdpi`)
 - Copy the user-created `.dpi` file to `$XDG_CONFIG_HOME/xdpi/x.dpi`
 - Merge `$HOME/.Xresources` into the X server resource database (via `xrdb`)
-- Execute the user-created `.sh` script
+- Execute the user-created shell script
 - Loop through `.diff` files and apply changes to the specified application configs
 - Reload applications specified in `$PROC_LIST`
 
@@ -43,7 +58,7 @@ Note: user shell script execution being before the `diffs` loop is <i>purposeful
 
 ## `.dpi` File Specification
 
-Since the configuration `.dpi` file is intended to be included in your `$HOME/.Xresources` via a `cpp` preprocessor, this file must follow the exact same spec as an X resource file.
+Since the configuration `.dpi` file is intended to be included in your `$HOME/.Xresources` via a `cpp` preprocessor, this file must follow the exact same spec as an X resources file.
 
 ### Example
 
@@ -63,30 +78,32 @@ Xft.lcdfilter: lcddefault
 
 ## `.diff` File Specification
 
-`xdpi` `.diff` files follow a generalized format similar to regular `.diff` files. The first line should start with a `#` character, followed by the path to the application configuration file you wish to edit. This is the <i>only</i> line that should contain a `#` character. After this, all lines beginning with the `>` character should contain a regular expression of the line in that configuration file you wish to change (specifically, `sed` regex), and all lines beginning with `<` should contain what you wish to replace it with. All lines beginning with `<` should be wrapped between two tokens which define the configuration they are associated with: `--- ^ my_config` and `--- $ my_config`. Every `>` regular expression <i>must</i> match a `<` line, otherwise it will be ignored.
+`xdpi` `.diff` files follow a generalized format somewhat similar to regular `.diff` files. The first line should start with a `#` character, followed by the path to the application configuration file you wish to edit. This is the <i>only</i> line that should contain a `#` character. After this, all lines beginning with the `>` character (input expressions) should contain a regular expression matching the line in that configuration file you wish to change (specifically, `sed` regex). Conversely, all lines beginning with the `<` character (output replacements) should contain what you wish to replace it with. All output replacements should be wrapped between two token lines which define the xdpi configuration they should be associated with: `--- ^ my_config` and `--- $ my_config`. To specify a global change (i.e. a change that should be made for <i>any</i> configuration), use the `*` symbol: `--- ^ *` and `--- $ *`. Whitespaces on the token lines are ignored. Every input expression <i>must</i> match an output replacement for the xdpi configuration in question, otherwise it will be ignored.
 
 ### Example
 
 ```diff
 # /home/gs/.config/polybar/config
 
+< sink = .*
 < monitor = ".*"
 < dpi = .*
 < height = .*
-< sink = .*
+
+--- ^ *
+> sink = alsa_output\.pci-0000_00_1f\.3\.hdmi-stereo
+--- $ *
 
 --- ^ my_config_0
 > monitor = "DP1"
 > dpi = 96
 > height = 38
-> sink = alsa_output\.pci-0000_00_1f\.3\.hdmi-stereo
 --- $ my_config_0
 
 --- ^ my_config_1
 > monitor = "eDP1"
 > dpi = 168
 > height = 48
-> sink = alsa_output\.pci-0000_00_1f\.3\.hdmi-stereo
 --- $ my_config_1
 ```
 
@@ -100,7 +117,7 @@ It was previously mentioned that the reasoning for the shell script being execut
 XDPI_CONF_DIR="$XDG_CONFIG_HOME/xdpi/configs"
 XDPI_DIFF_DIR="$XDG_CONFIG_HOME/xdpi/diffs"
 CURR_CONF_DIR="$XDPI_CONF_DIR/my_config"
-i3_DIFF_PATH="$CURR_CONF_DIR/diffs/i3.diff"
+i3_DIFF_PATH="$XDPI_DIFF_DIR/i3.diff"
 
 # Get pulseaudio card index
 AUDIO_CARD_INDEX=$(pacmd list-cards | grep "index" | sed "s/^.*index:\s*//")
